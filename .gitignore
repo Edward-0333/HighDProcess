@@ -2,3 +2,4 @@ data/*
 HighD_train_data/*
 Splitting_data/*
 data_info/*
+processed_data/*
