@@ -147,14 +147,17 @@ def get_map_feature(recordingMeta_df, current_states):
     lane_y_upper = [float(x) for x in lane_y_upper.split(';')]
     lane_y_lower = [float(x) for x in lane_y_lower.split(';')]
     lane_ys = lane_y_upper + lane_y_lower
+    segments = []
     for i in range(len(current_states)):
         now_xy = current_states[i][0:2]
         lanes = []
         for y_lane in lane_ys:
             pts = np.array(lane_points_global(now_xy[0], y_lane))
             lanes.append(pts)
-        segments = lanes_to_segments(lanes)
-        print(1)
+        segment = lanes_to_segments(lanes)
+        segments.append(segment)
+    return segments
+
 
 def main():
     MinT = 10 # 取最少存在10s的車輛才能作為ego car
@@ -200,8 +203,8 @@ def main():
                 valid_now, valid_frames = move_windows(car_group_df,merged_num)
                 current_states = get_ego_current_state(car_group_df, valid_now)
                 ego_feature = get_ego_feature(car_group_df, dict_cars, valid_now, valid_frames, merged_num)
-                # agent_feature = get_agent_feature(dict_cars, car_group_df, tracks_df, valid_now, valid_frames)
-                get_map_feature(recordingMeta_df,current_states)
+                agent_feature = get_agent_feature(dict_cars, car_group_df, tracks_df, valid_now, valid_frames)
+                map_feature = get_map_feature(recordingMeta_df,current_states)
                 current_states, ego_feature, agent_feature = normalize(current_states, ego_feature, agent_feature)
                 # 保存数据,是哟个pkl格式保存
                 for jj in range(len(valid_now)):
@@ -209,6 +212,7 @@ def main():
                         "ego_feature": ego_feature[jj],
                         "agent_feature": agent_feature[jj],
                         "current_state": current_states[jj],
+                        "map_feature": map_feature[jj],
                     }
                     save_path = f'./processed_data/scenario_{i+1:02}/car_{valid_id}'
                     if not os.path.exists(save_path):

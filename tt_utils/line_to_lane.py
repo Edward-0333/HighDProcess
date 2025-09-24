@@ -15,7 +15,7 @@ def _interp_on_grid(poly: np.ndarray, x_grid: np.ndarray) -> np.ndarray:
 
 def lanes_to_segments(
     lane_lines: List[np.ndarray],
-    step: float = 1.0,
+    step: float = 5.0,
     assume_left_is_larger_y: bool = True,
 ) -> List[Dict[str, np.ndarray]]:
     """
@@ -70,10 +70,10 @@ def lanes_to_segments(
         left_i  = _interp_on_grid(left,  x_grid)   # [m,2]
         right_i = _interp_on_grid(right, x_grid)   # [m,2]
         center  = np.stack([x_grid, 0.5*(left_i[:,1] + right_i[:,1])], axis=1)
-
-        segments.append({
-            'center': center,
-            'left': left_i,
-            'right': right_i,
-        })
-    return segments
+        segments.append(np.stack([center, left_i, right_i], axis=0))
+        # segments.append({
+        #     'center': center,
+        #     'left': left_i,
+        #     'right': right_i,
+        # })
+    return np.array(segments)
