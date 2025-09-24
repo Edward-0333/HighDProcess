@@ -13,12 +13,12 @@ def get_ego_feature(car_group_df, dict_cars, merged_num):
     lane_id = np.zeros(T, dtype=np.int64)
     valid_mask = np.ones(T, dtype=np.bool_)
 
-    if dict_cars[car_group_df["id"].values[0]]["class"]=='Car':
-        car_class = np.array(0)
-    elif dict_cars[car_group_df["id"].values[0]]["class"]=='Truck':
-        car_class = np.array(1)
-    else:
-        raise TypeError("Unknown car class")
+    # if dict_cars[car_group_df["id"].values[0]]["class"]=='Car':
+    #     car_class = np.array(0)
+    # elif dict_cars[car_group_df["id"].values[0]]["class"]=='Truck':
+    #     car_class = np.array(1)
+    # else:
+    #     raise TypeError("Unknown car class")
     drivingDirection = np.array(dict_cars[car_group_df["id"].values[0]]["drivingDirection"])
     for i in range(T):
         position[i, 0] = car_group_df["x"].values[i]
@@ -38,22 +38,65 @@ def get_ego_feature(car_group_df, dict_cars, merged_num):
         "shape": shape[::int(merged_num)],
         "lane_id": lane_id[::int(merged_num)],
         "valid_mask": valid_mask[::int(merged_num)],
-        "class": car_class,
+        "class": np.array(0),
         "drivingDirection": drivingDirection,
     }
 
-def get_agent_feature(car_group_df, tracks_df, merged_num):
+def get_agent_feature(dict_cars, car_group_df, tracks_df, merged_num, max_agents=50):
     ego_id = car_group_df["id"].values[0]
     frames = car_group_df["frame"].values[::int(merged_num)]
     # 因为frames过长，不像nuplan每一个场景为固定的时间长度，我们需要把过长的frames拆分成不同的场景，每个场景为10秒，采用移动窗口的方法。
-    #
-    valid_now = frames[25:len(frames)-101]
-    valid_frames = [ frames[i-25:i+101] for i in range(25, len(frames)-101)]
-    test = valid_frames[-1][25]
-    for f in frames:
-        # 获取tracks_df中frame为f的数据
-        frame_f = tracks_df[tracks_df["frame"] == f]
-        print(1)
+    valid_now = frames[25:len(frames)-100]
+    valid_frames = [frames[i-25:i+101] for i in range(25, len(frames)-100)]
+    # test = valid_frames[-1][25]
+    agent_features = []
+    for i, valid_frame in enumerate(valid_frames):
+        print(i)
+        now_i = valid_now[i]
+        temp =tracks_df[tracks_df["frame"] == now_i]
+        query_xy = temp[temp["id"] == ego_id][["x", "y"]].values[0]
+
+        # 取tracks_df中frame为now_i的数据
+        now_df = tracks_df[tracks_df["frame"] == now_i]
+        # 删除id为ego_id的行
+        now_df = now_df[now_df["id"] != ego_id]
+        N,T = len(now_df), len(valid_frame)
+        position = np.zeros((N, T, 2), dtype=np.float64)
+        velocity = np.zeros((N, T, 2), dtype=np.float64)
+        shape = np.zeros((N, T, 2), dtype=np.float64)
+        acceleration = np.zeros((N, T, 2), dtype=np.float64)
+        category = np.zeros((N,), dtype=np.int8)
+        valid_mask = np.zeros((N, T), dtype=np.bool_)
+
+        agent_ids = np.array(now_df['id'].values, dtype=np.int64)
+        agent_cur_pos = np.array([now_df['x'].values, now_df['y'].values], dtype=np.float64).T
+        distance = np.linalg.norm(agent_cur_pos - query_xy, axis=1)
+        agent_ids_sorted = agent_ids[np.argsort(distance)[: max_agents]]
+        agent_ids_dict = {agent_id: ii for ii, agent_id in enumerate(agent_ids_sorted)}
+        for t, f in enumerate(valid_frame):
+            temp = tracks_df[tracks_df["frame"] == f]
+            tracked_objects_list = temp[temp["id"] != ego_id]
+            for agent_id in tracked_objects_list['id'].values:
+                if agent_id not in agent_ids_dict:
+                    continue
+                idx = agent_ids_dict[agent_id]
+                position[idx, t] = tracked_objects_list[tracked_objects_list["id"] == agent_id][["x", "y"]].values[0]
+                velocity[idx, t] = tracked_objects_list[tracked_objects_list["id"] == agent_id][["xVelocity", "yVelocity"]].values[0]
+                acceleration[idx, t] = tracked_objects_list[tracked_objects_list["id"] == agent_id][["xAcceleration", "yAcceleration"]].values[0]
+                shape[idx, t] = tracked_objects_list[tracked_objects_list["id"] == agent_id][["width", "height"]].values[0]
+                valid_mask[idx, t] = True
+                if f == now_i:
+                    category[idx] = 1
+        agent_feature = {
+            "position": position,
+            "velocity": velocity,
+            "acceleration": acceleration,
+            "shape": shape,
+            "category": category,
+            "valid_mask": valid_mask,
+        }
+        agent_features.append(agent_feature)
+    return agent_features
 
 def main():
     MinT = 10 # 取最少存在10s的車輛才能作為ego car
@@ -96,7 +139,7 @@ def main():
                 # 取car_df中car_df为frame_group的数据
                 car_group_df = car_df[car_df["frame"].isin(frame_group)]
                 ego_feature = get_ego_feature(car_group_df, dict_cars, merged_num)
-                get_agent_feature(car_group_df, tracks_df, merged_num)
+                agent_feature = get_agent_feature(dict_cars, car_group_df, tracks_df, merged_num)
                 print(1)
 
 
