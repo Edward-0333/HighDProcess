@@ -3,3 +3,4 @@ HighD_train_data/*
 Splitting_data/*
 data_info/*
 processed_data/*
+tt_utils/visualization/*

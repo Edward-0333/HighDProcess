@@ -1,7 +1,9 @@
 import os
 import pandas as pd
 import numpy as np
+import pickle
 
+from tt_utils.line_to_lane import lanes_to_segments
 
 def get_ego_feature(car_group_df, dict_cars, valid_now, valid_frames, merged_num):
     ego_features = []
@@ -112,6 +114,48 @@ def move_windows(car_group_df,merged_num):
     valid_frames = [frames[i - 25:i + 101] for i in range(25, len(frames) - 100)]
     return valid_now, valid_frames
 
+def normalize(current_states, ego_feature, agent_feature):
+    new_current_states = []
+    new_ego_feature = []
+    new_agent_feature = []
+    for i in range(len(current_states)):
+        now_state = current_states[i]
+        now_ego = ego_feature[i]
+        now_agents = agent_feature[i]
+        center_xy = now_state[0:2]
+
+        now_state[0:2] = now_state[0:2] - center_xy
+        now_ego['position'] = now_ego['position'] - center_xy
+        now_agents['position'] = now_agents['position'] - center_xy
+
+        new_current_states.append(now_state)
+        new_ego_feature.append(now_ego)
+        new_agent_feature.append(now_agents)
+
+    return new_current_states, new_ego_feature, new_agent_feature
+
+def lane_points_global(x0, y_lane, forward_back=100, step=1.0):
+    # 生成 [x0-100, x0+100]，步长 1 m 的网格
+    xs = np.arange(x0 - forward_back, x0 + forward_back + 1e-6, step)
+    ys = np.full_like(xs, fill_value=y_lane, dtype=float)
+    pts = np.stack([xs, ys], axis=1)  # 形状 [L, 2]
+    return pts  # [[x1, y_lane], [x2, y_lane], ...]
+
+def get_map_feature(recordingMeta_df, current_states):
+    lane_y_upper = recordingMeta_df['upperLaneMarkings'].values[0]
+    lane_y_lower = recordingMeta_df['lowerLaneMarkings'].values[0]
+    lane_y_upper = [float(x) for x in lane_y_upper.split(';')]
+    lane_y_lower = [float(x) for x in lane_y_lower.split(';')]
+    lane_ys = lane_y_upper + lane_y_lower
+    for i in range(len(current_states)):
+        now_xy = current_states[i][0:2]
+        lanes = []
+        for y_lane in lane_ys:
+            pts = np.array(lane_points_global(now_xy[0], y_lane))
+            lanes.append(pts)
+        segments = lanes_to_segments(lanes)
+        print(1)
+
 def main():
     MinT = 10 # 取最少存在10s的車輛才能作為ego car
     FrameRate = 25
@@ -156,15 +200,22 @@ def main():
                 valid_now, valid_frames = move_windows(car_group_df,merged_num)
                 current_states = get_ego_current_state(car_group_df, valid_now)
                 ego_feature = get_ego_feature(car_group_df, dict_cars, valid_now, valid_frames, merged_num)
-                agent_feature = get_agent_feature(dict_cars, car_group_df, tracks_df, valid_now, valid_frames)
-                # 保存数据
+                # agent_feature = get_agent_feature(dict_cars, car_group_df, tracks_df, valid_now, valid_frames)
+                get_map_feature(recordingMeta_df,current_states)
+                current_states, ego_feature, agent_feature = normalize(current_states, ego_feature, agent_feature)
+                # 保存数据,是哟个pkl格式保存
                 for jj in range(len(valid_now)):
-                    save_path = f"./processed_data/recording_{i+1:02}/scene_{valid_id}_{jj}"
+                    save_data={
+                        "ego_feature": ego_feature[jj],
+                        "agent_feature": agent_feature[jj],
+                        "current_state": current_states[jj],
+                    }
+                    save_path = f'./processed_data/scenario_{i+1:02}/car_{valid_id}'
                     if not os.path.exists(save_path):
                         os.makedirs(save_path)
-                    np.savez_compressed(os.path.join(save_path, "ego_feature.npz"), **ego_feature[jj])
-                    np.savez_compressed(os.path.join(save_path, "agent_feature.npz"), **agent_feature[jj])
-                    np.savez_compressed(os.path.join(save_path, "current_state.npz"), current_states[jj])
+                    with open(f'{save_path}/{valid_now[jj]}.pkl', 'wb') as f:
+                        pickle.dump(save_data, f)
+
 
                 print(1)
 
