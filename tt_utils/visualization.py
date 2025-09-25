@@ -3,7 +3,7 @@ import numpy as np
 import pickle
 import matplotlib.pyplot as plt
 
-def plot_trajectory(ego_feature, agent_feature):
+def plot_trajectory(ego_feature, agent_feature, map_feature):
     T = ego_feature['position'].shape[0]
     save_path = './visualization'
     os.makedirs(save_path, exist_ok=True)
@@ -25,8 +25,20 @@ def plot_trajectory(ego_feature, agent_feature):
             rectangle = plt.Rectangle((agent_position[0] - agent_shape[0] / 2, agent_position[1] - agent_shape[1] / 2),
                                       agent_shape[0], agent_shape[1], fc='red', ec='black', alpha=0.5)
             ax.add_patch(rectangle)
-        ax.set_xlim(now_position[0] - 100, now_position[0] + 100)
-        ax.set_ylim(now_position[1] - 100, now_position[1] + 100)
+
+    # 画出map_feature中的线,不随时间变化
+        for line in map_feature:
+            center_line = line[0]
+            left_line = line[1]
+            right_line = line[2]
+            plt.plot(center_line[:, 0], center_line[:, 1], color='gray', linewidth=1)
+            plt.plot(left_line[:, 0], left_line[:, 1], color='black', linewidth=2)
+            plt.plot(right_line[:, 0], right_line[:, 1], color='black', linewidth=2)
+
+        # ax.set_xlim(now_position[0] - 100, now_position[0] + 100)
+        # ax.set_ylim(now_position[1] - 100, now_position[1] + 100)
+        ax.axis('equal')
+
         plt.savefig(f'{save_path}/{t:03d}.png')
         plt.close()
 
@@ -37,13 +49,14 @@ def main():
     # 查看data_root文件夹下的所有文件
     files = os.listdir(data_root)
 
-    files_path = data_root + "/scenario_01/car_12/51.pkl"
+    files_path = data_root + "/scenario_01/car_16/134.pkl"
     with open(files_path, 'rb') as f:
         data = pickle.load(f)
     ego_feature = data["ego_feature"]
     agent_feature = data["agent_feature"]
     current_state = data["current_state"]
-    plot_trajectory(ego_feature, agent_feature)
+    map_feature = data["map_feature"]
+    plot_trajectory(ego_feature, agent_feature, map_feature)
     print(1)
 
 
